@@ -24,13 +24,13 @@ const getGlobalDDoS = async (req, res) => {
   }
 
   //check for cache
-  if (cache[period] && Date.now() - cache[period].fetchedAt < ONE_HOUR) {
+  if (cache[period] && Date.now() - cache[period].lastFetched < ONE_HOUR) {
     console.log(`Returning cached Cloudflare data for ${period}`);
-    return res.status(200).json(cache[period]);
+    return res.status(200).json(cache[period].data);
   }
 
   try {
-    const [timeseriesRes, originsRes, targetsRes] = await Promise.all([
+    const [timeseriesRes, originsRes, targetsRes, protocolRes, vectorRes] = await Promise.all([
       axios.get('https://api.cloudflare.com/client/v4/radar/attacks/layer3/timeseries', {
         headers: cfHeaders,
         params: {
@@ -54,7 +54,21 @@ const getGlobalDDoS = async (req, res) => {
           dateRange: period,
           format: 'json'
         }
-      })
+      }),
+      axios.get('https://api.cloudflare.com/client/v4/radar/attacks/layer3/summary/protocol', {
+        headers: cfHeaders,
+        params: {
+          dateRange: period,
+          format: 'json'
+        }
+      }),
+      axios.get('https://api.cloudflare.com/client/v4/radar/attacks/layer3/summary/vector', {
+        headers: cfHeaders,
+        params: {
+          dateRange: period,
+          format: 'json'
+        }
+      }),
     ]);
 
     // console.log('Cloudflare timeseries:', JSON.stringify(timeseriesRes.data.result, null, 2));
@@ -66,6 +80,8 @@ const getGlobalDDoS = async (req, res) => {
       topOrigins: originsRes.data.result.top_0,
       topTargets: targetsRes.data.result.top_0,
       period: period,
+      protocol: protocolRes.data.result.summary_0,
+      vector: vectorRes.data.result.summary_0,
       fetchedAt: new Date().toISOString()
     };
     // cachedData = result;
