@@ -1,6 +1,20 @@
 const axios = require('axios');
 const IPAnalysis = require('../models/IPanalysis');
 
+// --- Retry Helper ---
+// Retries a function up to `retries` times with `delayMs` pause between attempts
+const retryRequest = async (fn, retries = 2, delayMs = 2000) => {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      console.log(`Retry attempt ${attempt + 1}/${retries} after error: ${err.message}`);
+      await new Promise(res => setTimeout(res, delayMs));
+    }
+  }
+};
+
 // --- IP Validation Helpers ---
 const isValidIPv4 = (ip) => {
   const parts = ip.split('.');
@@ -54,7 +68,7 @@ const analyzeIP = async (req, res) => {
     }
 
     const [abuseResponse, geoResponse] = await Promise.all([
-      axios.get('https://api.abuseipdb.com/api/v2/check', {
+      retryRequest(() => axios.get('https://api.abuseipdb.com/api/v2/check', {
         headers: {
           'Key': process.env.ABUSEIPDB_API_KEY,
           'Accept': 'application/json'
@@ -63,13 +77,12 @@ const analyzeIP = async (req, res) => {
           ipAddress: ip,
           maxAgeInDays: 90
         }
-      }),
-      axios.get(`http://ip-api.com/json/${ip}`, {
+      })),
+      retryRequest(() => axios.get(`http://ip-api.com/json/${ip}`, {
         params: {
           fields: 'status,message,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,isp,org,as,proxy,query'
         }
-      })
-
+      }))
     ]);
 
 
